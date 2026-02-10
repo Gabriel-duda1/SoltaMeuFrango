@@ -350,7 +350,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function carregar() {
     imagensCarregadas++;
     if (imagensCarregadas === 4) {
-      telaInicio.style.display = 'block';
+      telaInicio.style.display = 'flex';
     }
   }
 
