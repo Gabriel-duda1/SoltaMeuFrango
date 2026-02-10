@@ -2,7 +2,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('jogoCanva');
   const ctx = canvas.getContext('2d');
 
-  // Resolução interna do canvas responsiva
   function resizeCanvas() {
     const wrapper = document.getElementById('canvas-wrapper');
     const width = wrapper.clientWidth;
@@ -10,19 +9,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.floor(width * dpr);
     canvas.height = Math.floor(height * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // escala para desenhar em CSS pixels
-    // Atualiza posições dependentes do canvas
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     recalcularLanes();
   }
   window.addEventListener('resize', resizeCanvas);
 
-  // Imagens
   const jogadorImg = new Image(); jogadorImg.src = 'rebeka.png';
   const placaImg = new Image(); placaImg.src = 'placa.png';
   const coneImg = new Image(); coneImg.src = 'cone.png';
   const frangoImg = new Image(); frangoImg.src = 'frango.png';
 
-  // Estado do jogo
   let pausado = false;
   let gameOver = false;
   let score = 0;
@@ -34,52 +30,49 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const botaoPausar = document.getElementById('botao-pausar');
   const botaoReiniciar = document.getElementById('botao-reiniciar');
+  const botaoIniciar = document.getElementById('botao-iniciar');
+  const telaInicio = document.getElementById('telaInicio');
+  const historiaBtn = document.getElementById('historia-btn');
+  const historiaBox = document.getElementById('historia-box');
 
-  // Dimensões e faixas
-  let lanePadding = 64; // ajustado para visual melhor
-  let lanes = [0, 0];   // será recalculado no resize
+  let lanePadding = 64;
+  let lanes = [0, 0];
 
   function recalcularLanes() {
-    // Faixas mais “no centro” da estrada para não ficar colada na linha
     const estradaTop = lanePadding - 16;
     const estradaBottom = canvas.height / (window.devicePixelRatio || 1) - (lanePadding - 16);
     const alturaEstrada = estradaBottom - estradaTop;
-
-    const faixaSuperiorY = estradaTop + alturaEstrada * 0.23; // ajustado para estética
-    const faixaInferiorY = estradaTop + alturaEstrada * 0.63; // ajustado para estética
-
+    const faixaSuperiorY = estradaTop + alturaEstrada * 0.23;
+    const faixaInferiorY = estradaTop + alturaEstrada * 0.63;
     lanes[0] = Math.round(faixaSuperiorY);
     lanes[1] = Math.round(faixaInferiorY);
-    // Se jogador já existe, atualiza posição Y
     if (jogador) {
       jogador.y = lanes[jogador.faixaIndex];
     }
   }
 
-  // Jogador
   const jogador = {
     x: 120,
-    y: 0, // definido após resize
+    y: 0,
     largura: 64,
     altura: 64,
     velocidadeX: 2.6,
     faixaIndex: 0
   };
 
-  // Obstáculos e itens
   const obstaculos = [];
-  const itens = []; // frango
+  const itens = [];
 
-  const spawnIntervalBase = 1200;  // ms
+  const spawnIntervalBase = 1200;
   let ultimoSpawn = 0;
   let velocidadeObstaculo = 3.2;
   let dificuldadeTimer = 0;
+  let tempoInicio = null;
+  let avisoMostrado = false;
 
-  // Animações “+1”
-  const popups = []; // {x, y, texto, t, dur}
-
+  const popups = [];
   function addPopup(x, y, texto = '+1') {
-    popups.push({ x, y, texto, t: 0, dur: 900 }); // 900ms
+    popups.push({ x, y, texto, t: 0, dur: 900 });
   }
 
   function resetar() {
@@ -98,51 +91,48 @@ document.addEventListener('DOMContentLoaded', () => {
     botaoPausar.textContent = 'Pausar';
     scoreEl.textContent = score.toString();
     bestEl.textContent = best.toString();
+    tempoInicio = Date.now();
+    avisoMostrado = false;
   }
 
-  // Spawner de obstáculos
   function spawnObstaculo() {
     const tipo = Math.random() < 0.5 ? 'placa' : 'cone';
     const faixaIndex = Math.random() < 0.5 ? 0 : 1;
-
-    const largura = 60;
-    const altura = 60;
-
     obstaculos.push({
       tipo,
       x: canvas.width / (window.devicePixelRatio || 1) + 30,
       y: lanes[faixaIndex],
-      largura,
-      altura,
+      largura: 60,
+      altura: 60,
       velocidadeX: velocidadeObstaculo
     });
   }
 
-  // Spawner de frango (às vezes com obstáculo, às vezes sozinho)
-  // Regra: a cada spawn de obstáculo, 50% chance de também spawnar frango.
-  // E adicionalmente, spawns independentes a cada ~2s.
   let ultimoSpawnFrangoLivre = 0;
   function spawnFrango(faixaIdxOptional) {
-    const faixaIndex = typeof faixaIdxOptional === 'number'
+    let faixaIndex = typeof faixaIdxOptional === 'number'
       ? faixaIdxOptional
       : (Math.random() < 0.5 ? 0 : 1);
 
-    const largura = 48;
-    const altura = 48;
+    if (obstaculos.length > 0) {
+      const ultimo = obstaculos[obstaculos.length - 1];
+      if (ultimo.y === lanes[faixaIndex]) {
+        faixaIndex = faixaIndex === 0 ? 1 : 0;
+      }
+    }
 
     itens.push({
       tipo: 'frango',
       x: canvas.width / (window.devicePixelRatio || 1) + 30,
-      y: lanes[faixaIndex] + 6, // levemente centralizado
-      largura,
-      altura,
-      velocidadeX: velocidadeObstaculo * 0.95 // vem um pouco mais devagar
+      y: lanes[faixaIndex] + 6,
+      largura: 48,
+      altura: 48,
+      velocidadeX: velocidadeObstaculo * 0.95
     });
   }
 
-  // Colisão AABB com padding
   function colide(a, b) {
-    const padding = 12;
+    const padding = 18;
     return (
       a.x < b.x + b.largura - padding &&
       a.x + a.largura > b.x + padding &&
@@ -151,65 +141,59 @@ document.addEventListener('DOMContentLoaded', () => {
     );
   }
 
-  // Atualização
   let ultimoFrame = performance.now();
   function atualizar(timestamp) {
     const dt = Math.min(33, timestamp - ultimoFrame);
     ultimoFrame = timestamp;
-
     if (pausado || gameOver) return;
 
-    // Avanço do jogador
     jogador.x += jogador.velocidadeX;
-
-    // Travar janela do jogador e mover mundo
     const pivotX = 220;
     if (jogador.x > pivotX) {
       const deslocamento = jogador.x - pivotX;
       jogador.x = pivotX;
-
       obstaculos.forEach(o => (o.x -= deslocamento));
       itens.forEach(it => (it.x -= deslocamento));
-
       score += Math.floor(deslocamento * 0.2);
       scoreEl.textContent = score.toString();
     }
 
-    // Dificuldade progressiva
     dificuldadeTimer += dt;
-    if (dificuldadeTimer > 4000) {
+    if (dificuldadeTimer > 1500) {
       dificuldadeTimer = 0;
       velocidadeObstaculo += 0.2;
     }
 
-    // Spawn por tempo (obstáculos)
-    if (timestamp - ultimoSpawn > spawnIntervalBase - Math.min(600, score)) {
-      ultimoSpawn = timestamp;
-      spawnObstaculo();
-      // 50% de chance de frango junto
-      if (Math.random() < 0.5) {
-        spawnFrango(); // mesmo timing, faixa aleatória
+    if (tempoInicio && !avisoMostrado) {
+      const elapsed = (Date.now() - tempoInicio) / 1000;
+      if (elapsed >= 90) {
+        addPopup(canvas.width / 2, canvas.height / 2, 'Vai ficar mais difícil!');
+        avisoMostrado = true;
       }
     }
 
-    // Spawn de frango sozinho (a cada ~2s)
-    if (timestamp - ultimoSpawnFrangoLivre > 2000) {
-      ultimoSpawnFrangoLivre = timestamp;
-      if (Math.random() < 0.6) { // nem sempre
+    if (timestamp - ultimoSpawn > spawnIntervalBase - Math.min(600, score)) {
+      ultimoSpawn = timestamp;
+      spawnObstaculo();
+      if (Math.random() < 0.5) {
         spawnFrango();
       }
     }
 
-    // Atualiza obstáculos
+    if (timestamp - ultimoSpawnFrangoLivre > 2000) {
+      ultimoSpawnFrangoLivre = timestamp;
+      if (Math.random() < 0.6) {
+        spawnFrango();
+      }
+    }
+
     for (let i = obstaculos.length - 1; i >= 0; i--) {
       const o = obstaculos[i];
       o.x -= o.velocidadeX;
-
       if (o.x + o.largura < -50) {
         obstaculos.splice(i, 1);
         continue;
       }
-
       if (colide(jogador, o)) {
         gameOver = true;
         stateEl.textContent = 'Derrota';
@@ -219,57 +203,41 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // Atualiza frangos
     for (let i = itens.length - 1; i >= 0; i--) {
       const it = itens[i];
       it.x -= it.velocidadeX;
-
       if (it.x + it.largura < -50) {
         itens.splice(i, 1);
         continue;
       }
-
       if (colide(jogador, it)) {
-        // Coleta
         score += 1;
         scoreEl.textContent = score.toString();
-
-        // Animação +1 na posição do frango
         addPopup(it.x, it.y - 10, '+1');
-
-        // Remove item coletado
         itens.splice(i, 1);
       }
     }
 
-    // Atualiza popups +1
     for (let i = popups.length - 1; i >= 0; i--) {
       const p = popups[i];
       p.t += dt;
-      // Sobe levemente
       p.y -= 0.06 * dt;
-      // Remove ao terminar
       if (p.t >= p.dur) popups.splice(i, 1);
     }
   }
-
-  // Desenho do cenário com duas “ruas”
   function desenharCenario() {
     const cssW = canvas.width / (window.devicePixelRatio || 1);
     const cssH = canvas.height / (window.devicePixelRatio || 1);
 
-    // Fundo
     ctx.fillStyle = '#86c98b';
     ctx.fillRect(0, 0, cssW, cssH);
 
-    // Estrada
     const estradaY = lanePadding - 16;
     const estradaAltura = cssH - (lanePadding - 16) * 2;
 
     ctx.fillStyle = '#444';
     ctx.fillRect(0, estradaY, cssW, estradaAltura);
 
-    // Faixa divisória central (tracejada)
     ctx.strokeStyle = '#eee';
     ctx.lineWidth = 4;
     ctx.setLineDash([18, 12]);
@@ -280,7 +248,6 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Bordas da estrada
     ctx.fillStyle = '#2e2e2e';
     ctx.fillRect(0, estradaY, cssW, 8);
     ctx.fillRect(0, estradaY + estradaAltura - 8, cssW, 8);
@@ -291,14 +258,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const cssH = canvas.height / (window.devicePixelRatio || 1);
 
     ctx.clearRect(0, 0, cssW, cssH);
-
-    // cenário
     desenharCenario();
 
-    // jogador
     ctx.drawImage(jogadorImg, jogador.x, jogador.y, jogador.largura, jogador.altura);
 
-    // obstáculos
     obstaculos.forEach(o => {
       if (o.tipo === 'placa') {
         ctx.drawImage(placaImg, o.x, o.y, o.largura, o.altura);
@@ -307,12 +270,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    // frangos
     itens.forEach(it => {
       ctx.drawImage(frangoImg, it.x, it.y, it.largura, it.altura);
     });
 
-    // popups +1
     popups.forEach(p => {
       const alpha = 1 - p.t / p.dur;
       ctx.globalAlpha = Math.max(0, alpha);
@@ -323,7 +284,6 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.globalAlpha = 1;
     });
 
-    // overlays
     if (pausado || gameOver) {
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.fillRect(0, 0, cssW, cssH);
@@ -344,21 +304,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Loop
   function loop(timestamp) {
     atualizar(timestamp);
     desenhar();
     requestAnimationFrame(loop);
   }
 
-  // Controles: alternar faixas
   document.addEventListener('keydown', (e) => {
     if (gameOver) {
-      // Se estiver na tela de fim de jogo, permitir “Enter” para reiniciar
       if (e.key === 'Enter') resetar();
       return;
     }
-
     if (e.key === 'ArrowUp') {
       jogador.faixaIndex = 0;
       jogador.y = lanes[jogador.faixaIndex];
@@ -368,7 +324,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Botões
   botaoPausar.addEventListener('click', () => {
     if (gameOver) return;
     pausado = !pausado;
@@ -380,20 +335,28 @@ document.addEventListener('DOMContentLoaded', () => {
     resetar();
   });
 
-  // Carregamento de imagens
+  botaoIniciar.addEventListener('click', () => {
+    telaInicio.style.display = 'none';
+    resizeCanvas();
+    resetar();
+    requestAnimationFrame(loop);
+  });
+
+  historiaBtn.addEventListener('click', () => {
+    historiaBox.style.display = historiaBox.style.display === 'block' ? 'none' : 'block';
+  });
+
   let imagensCarregadas = 0;
   function carregar() {
     imagensCarregadas++;
     if (imagensCarregadas === 4) {
-      resizeCanvas(); // define resolução e lanes
-      resetar();
-      requestAnimationFrame(loop);
+      telaInicio.style.display = 'block';
     }
   }
-
 
   jogadorImg.onload = carregar;
   placaImg.onload = carregar;
   coneImg.onload = carregar;
   frangoImg.onload = carregar;
 });
+  
